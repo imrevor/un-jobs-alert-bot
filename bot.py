@@ -2,6 +2,8 @@ import os
 import logging
 import asyncio
 import random
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -853,7 +855,25 @@ async def clear_conflict():
     logger.info("Conflict cleared, starting bot...")
 
 
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        pass  # silence logs
+
+def start_health_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    logger.info(f"Health server on port {port}")
+
 def main():
+    # Start health server so Railway sees a live port
+    start_health_server()
+    
     init_db()
     
     # Clear any zombie polling connections BEFORE building the app
