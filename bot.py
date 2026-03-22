@@ -871,13 +871,19 @@ def start_health_server():
     logger.info(f"Health server on port {port}")
 
 def main():
-    # Start health server so Railway sees a live port
-    start_health_server()
-    
     init_db()
     
-    # Clear any zombie polling connections BEFORE building the app
-    asyncio.run(clear_conflict())
+    # Clear any zombie polling connections synchronously before starting
+    import httpx
+    url = f"https://api.telegram.org/bot{TOKEN}"
+    with httpx.Client() as client:
+        client.post(f"{url}/deleteWebhook", params={"drop_pending_updates": True})
+        for _ in range(2):
+            try:
+                client.post(f"{url}/getUpdates", json={"offset": -1, "timeout": 1}, timeout=5)
+            except Exception:
+                pass
+    logger.info("Conflict cleared, starting bot...")
     
     app = Application.builder().token(TOKEN).build()
     
