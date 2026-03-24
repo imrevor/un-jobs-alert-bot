@@ -590,7 +590,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def matches_filters(job, user_filters):
     if not user_filters:
-        return True
+        return False
     
     title_lower = job["title"].lower()
     org_lower = (job["organization"] or "").lower()
