@@ -347,8 +347,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📊 *Bot Statistics:*\n\n"
                 f"👥 Users: {len(users)}\n"
                 f"💼 Jobs in database: {count}\n"
-                f"Sources: unjobs.org, impactpool.org\n"
-                f"Auto-check: every 4 hours\n"
+               f"Sources: unjobs.org, impactpool.org, linkedin.com\nAuto-check: every 4 hours"
                 f"_Updated: {now}_",
                 parse_mode="Markdown",
                 reply_markup=get_main_menu()
