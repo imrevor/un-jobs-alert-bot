@@ -576,9 +576,11 @@ async def clear_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     count = get_job_count()
+    users = get_all_active_users()
+    user_count = len(users)
     await update.message.reply_text(
-        f"📊 *Bot Statistics:*\n\nJobs in database: {count}\n"
-        f"Sources: unjobs.org, impactpool.org\nAuto-check: every 4 hours",
+        f"📊 *Bot Statistics:*\n\nActive Users: {user_count}\nJobs in database: {count}\n"
+        f"Sources: unjobs.org, impactpool.org, linkedin.com\nAuto-check: every 4 hours",
         parse_mode="Markdown",
         reply_markup=get_main_menu()
     )
@@ -624,17 +626,29 @@ def matches_filters(job, user_filters):
             "fixed-term": ["fixed-term", "fixed term"],
             "sc": ["sc-", "service contract"],
         }
+        import re
         for g in user_filters["grade"]:
-            if g.replace("-", "") in grade_lower.replace("-", "") or g in title_lower:
+            g_safe = re.escape(g.lower())
+            g_no_hyphen = re.escape(g.lower().replace("-", ""))
+            # Use regex boundaries to match exactly the grade e.g. "P-3" or "P3"
+            # Since hyphens are non-word boundaries, we use \b for the alphanumeric parts
+            pattern = rf"(?<![a-zA-Z0-9])(?:{g_safe}|{g_no_hyphen})(?![a-zA-Z0-9])"
+            
+            if re.search(pattern, grade_lower) or re.search(pattern, title_lower):
                 score += 1
                 break
             if g in grade_keywords:
+                matched_kw = False
                 for kw in grade_keywords[g]:
                     if kw in title_lower:
                         score += 1
+                        matched_kw = True
                         break
-                if score > checked - 1:
+                if matched_kw:
                     break
+        
+        if score < checked:
+            return False
     
     if "sector" in user_filters:
         checked += 1
