@@ -1,4 +1,4 @@
-import requests
+import httpx
 from bs4 import BeautifulSoup
 import re
 import hashlib
@@ -10,111 +10,145 @@ HEADERS = {
 }
 
 def scrape_unjobs():
-    """Scrape latest jobs from unjobs.org homepage"""
     jobs = []
     try:
-        resp = requests.get("https://unjobs.org/", headers=HEADERS, timeout=30)
-        if resp.status_code != 200:
-            print(f"unjobs.org returned {resp.status_code}")
-            return jobs
-        
-        soup = BeautifulSoup(resp.text, "lxml")
-        
-        # Parse job listings from the homepage
-        for link in soup.find_all("a", href=re.compile(r"/vacancies/")):
-            title = link.get_text(strip=True)
-            url = link["href"]
-            if not url.startswith("http"):
-                url = "https://unjobs.org" + url
+        with httpx.Client(follow_redirects=True, headers=HEADERS, timeout=30) as client:
+            resp = client.get("https://unjobs.org/")
+            if resp.status_code != 200:
+                print(f"unjobs.org returned {resp.status_code}")
+                return jobs
             
-            # Get organization (next sibling text)
-            org_text = ""
-            parent = link.parent
-            if parent:
-                # Organization is typically in text after the link
-                for sibling in link.next_siblings:
-                    text = getattr(sibling, 'get_text', lambda **kw: str(sibling))(strip=True) if hasattr(sibling, 'get_text') else str(sibling).strip()
-                    if text and len(text) > 2:
-                        org_text = text
-                        break
+            soup = BeautifulSoup(resp.text, "lxml")
             
-            # Extract location from title (usually "Title, Location")
-            location = ""
-            if "," in title:
-                parts = title.rsplit(",", 1)
-                if len(parts) == 2 and len(parts[1].strip()) < 50:
-                    location = parts[1].strip()
-            
-            # Extract grade from title
-            grade = ""
-            grade_match = re.search(r'\b(P-?[1-5]|D-?[1-2]|G-?[1-7]|NO-?[A-D]|SC-?[1-9])\b', title, re.IGNORECASE)
-            if grade_match:
-                grade = grade_match.group(1).upper()
-            
-            job_id = hashlib.md5(url.encode()).hexdigest()
-            
-            jobs.append({
-                "job_id": job_id,
-                "title": title,
-                "organization": org_text,
-                "location": location,
-                "url": url,
-                "grade": grade,
-                "source": "unjobs"
-            })
-    
+            for link in soup.find_all("a", href=re.compile(r"/vacancies/")):
+                title = link.get_text(strip=True)
+                url = link["href"]
+                if not url.startswith("http"):
+                    url = "https://unjobs.org" + url
+                
+                org_text = ""
+                parent = link.parent
+                if parent:
+                    for sibling in link.next_siblings:
+                        text = getattr(sibling, 'get_text', lambda **kw: str(sibling))(strip=True) if hasattr(sibling, 'get_text') else str(sibling).strip()
+                        if text and len(text) > 2:
+                            org_text = text
+                            break
+                
+                location = ""
+                if "," in title:
+                    parts = title.rsplit(",", 1)
+                    if len(parts) == 2 and len(parts[1].strip()) < 50:
+                        location = parts[1].strip()
+                
+                grade = ""
+                grade_match = re.search(r'\b(P-?[1-5]|D-?[1-2]|G-?[1-7]|NO-?[A-D]|SC-?[1-9])\b', title, re.IGNORECASE)
+                if grade_match:
+                    grade = grade_match.group(1).upper()
+                
+                job_id = hashlib.md5(url.encode()).hexdigest()
+                
+                jobs.append({
+                    "job_id": job_id,
+                    "title": title,
+                    "organization": org_text,
+                    "location": location,
+                    "url": url,
+                    "grade": grade,
+                    "source": "unjobs"
+                })
     except Exception as e:
         print(f"Error scraping unjobs.org: {e}")
-    
     return jobs
 
 def scrape_impactpool():
-    """Scrape latest jobs from impactpool.org"""
     jobs = []
     try:
-        resp = requests.get("https://www.impactpool.org/jobs", headers=HEADERS, timeout=30)
-        if resp.status_code != 200:
-            print(f"impactpool.org returned {resp.status_code}")
-            return jobs
-        
-        soup = BeautifulSoup(resp.text, "lxml")
-        
-        for card in soup.find_all("a", href=re.compile(r"/jobs/")):
-            title = card.get_text(strip=True)
-            if not title or len(title) < 5:
-                continue
-            url = card["href"]
-            if not url.startswith("http"):
-                url = "https://www.impactpool.org" + url
+        with httpx.Client(follow_redirects=True, headers=HEADERS, timeout=30) as client:
+            resp = client.get("https://www.impactpool.org/search")
+            if resp.status_code != 200:
+                print(f"impactpool.org returned {resp.status_code}")
+                return jobs
             
-            location = ""
-            grade = ""
-            org = ""
-            
-            grade_match = re.search(r'\b(P-?[1-5]|D-?[1-2])\b', title, re.IGNORECASE)
-            if grade_match:
-                grade = grade_match.group(1).upper()
-            
-            if "," in title:
-                parts = title.rsplit(",", 1)
-                if len(parts) == 2 and len(parts[1].strip()) < 50:
-                    location = parts[1].strip()
-            
-            job_id = hashlib.md5(url.encode()).hexdigest()
-            
-            jobs.append({
-                "job_id": job_id,
-                "title": title,
-                "organization": org,
-                "location": location,
-                "url": url,
-                "grade": grade,
-                "source": "impactpool"
-            })
-    
+            soup = BeautifulSoup(resp.text, "lxml")
+            links = soup.find_all("a", href=lambda h: h and "/jobs/" in h)
+            for link in links:
+                title_div = link.find("div", attrs={"type": "cardTitle"})
+                if not title_div: continue
+                title = title_div.get_text(strip=True)
+                
+                url = link["href"]
+                if not url.startswith("http"):
+                    url = "https://www.impactpool.org" + url
+                
+                body_divs = link.find_all("div", attrs={"type": "bodyEmphasis"})
+                org = body_divs[0].get_text(strip=True) if len(body_divs) > 0 else ""
+                loc = body_divs[1].get_text(strip=True) if len(body_divs) > 1 else ""
+                
+                grade = ""
+                grade_match = re.search(r'\b(P-?[1-5]|D-?[1-2]|G-?[1-7]|NO-?[A-D]|SC-?[1-9])\b', title, re.IGNORECASE)
+                if grade_match:
+                    grade = grade_match.group(1).upper()
+                
+                job_id = hashlib.md5(url.encode()).hexdigest()
+                jobs.append({
+                    "job_id": job_id,
+                    "title": title,
+                    "organization": org,
+                    "location": loc,
+                    "url": url,
+                    "grade": grade,
+                    "source": "Impactpool"
+                })
     except Exception as e:
         print(f"Error scraping impactpool.org: {e}")
-    
+    return jobs
+
+def scrape_linkedin():
+    jobs = []
+    try:
+        with httpx.Client(follow_redirects=True, headers=HEADERS, timeout=30) as client:
+            resp = client.get("https://www.linkedin.com/jobs/search?keywords=united%20nations&location=Worldwide")
+            if resp.status_code != 200:
+                print(f"linkedin returned {resp.status_code}")
+                return jobs
+            
+            soup = BeautifulSoup(resp.text, "lxml")
+            cards = soup.find_all("div", class_="base-card")
+            for card in cards:
+                title_elem = card.find("h3")
+                if not title_elem: continue
+                title = title_elem.get_text(strip=True)
+                
+                link = card.find("a", class_="base-card__full-link")
+                if not link: continue
+                url = link["href"]
+                
+                org_elem = card.find("h4")
+                org = org_elem.get_text(strip=True) if org_elem else ""
+                
+                loc_elem = card.find("span", class_="job-search-card__location")
+                loc = loc_elem.get_text(strip=True) if loc_elem else ""
+                
+                grade = ""
+                grade_match = re.search(r'\b(P-?[1-5]|D-?[1-2]|G-?[1-7]|NO-?[A-D]|SC-?[1-9])\b', title, re.IGNORECASE)
+                if grade_match:
+                    grade = grade_match.group(1).upper()
+                
+                url_clean = url.split("?")[0]
+                job_id = hashlib.md5(url_clean.encode()).hexdigest()
+                
+                jobs.append({
+                    "job_id": job_id,
+                    "title": title,
+                    "organization": org,
+                    "location": loc,
+                    "url": url_clean,
+                    "grade": grade,
+                    "source": "LinkedIn"
+                })
+    except Exception as e:
+        print(f"Error scraping linkedin: {e}")
     return jobs
 
 def run_scraper():
@@ -132,6 +166,11 @@ def run_scraper():
     impact = scrape_impactpool()
     all_jobs.extend(impact)
     print(f"  Found {len(impact)} jobs")
+    
+    print("Scraping LinkedIn...")
+    linkedin = scrape_linkedin()
+    all_jobs.extend(linkedin)
+    print(f"  Found {len(linkedin)} jobs")
     
     # Store in database
     new_count = 0
