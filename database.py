@@ -115,7 +115,7 @@ def get_filters(user_id):
         ft = row["filter_type"]
         if ft not in filters:
             filters[ft] = []
-                    filters[ft].append(row["filter_value"])
+        filters[ft].append(row["filter_value"])
     return filters
 
 def get_all_active_users():
